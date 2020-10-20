@@ -336,7 +336,7 @@ def main():
         Eval at the end of the train
         '''
         if args.do_eval and global_step > args.skip_eval_rate*t_total and global_step % args.eval_steps == 0:
-            eval_acc, eval_f1 = evaluate(args, model, eval_data, global_step)
+            eval_acc, eval_f1 = evaluate(args, model, eval_data, global_step, tr_loss_avg)
             
             # save the best performs model
             if eval_f1 > best_f1:

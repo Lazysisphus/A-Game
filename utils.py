@@ -67,12 +67,11 @@ class DataProcessor(object):
 
 
 class QAProcessor(DataProcessor):
-    """Processor for the ATSA data set (NLPCC 2020)."""
-    
-    def __init__(self):
-        self.df_train = pd.read_csv('./data/train_df.tsv', sep="\t")
-        self.df_eval = pd.read_csv('./data/val_df.tsv', sep="\t")
-        self.df_test = pd.read_csv('./data/test_df.tsv', sep="\t") # ---------- change to test file at last!  ----------
+        
+    def __init__(self, args):
+        self.df_train = pd.read_csv(args.train_file, sep="\t")
+        self.df_eval = pd.read_csv(args.eval_file, sep="\t")
+        self.df_test = pd.read_csv(args.test_file, sep="\t") # ---------- change to test file at last!  ----------
 
     def get_train_examples(self, args):
         return self._create_examples(self.df_train, labels_available=True, do_lower=args.do_lower_case)

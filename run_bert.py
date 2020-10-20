@@ -16,8 +16,8 @@ import torch.functional as F
 from torch.utils.data import (DataLoader, RandomSampler, SequentialSampler, TensorDataset)
 from torch.utils.data.distributed import DistributedSampler
 
-from transformers import AutoConfig, BertTokenizer
-from transformers import AlbertForSequenceClassification_MERGE
+from transformers import AutoConfig, AutoTokenizer
+from transformers import AutoModelForSequenceClassification
 from transformers import AdamW, get_linear_schedule_with_warmup
 
 from utils import QAProcessor, get_Dataset
@@ -99,12 +99,12 @@ def evaluate(args, model, data, global_step, tr_loss_avg):
     print("  global_step: {:d}, train_loss: {:.4f}, eval_loss: {:.4f}, eval_acc: {:.4f}, eval_f1: {:.4f}".format(global_step, tr_loss_avg, eval_loss, eval_acc, eval_f1))
 
     # output logits result file in the form of dataframe
-    check_point = global_step
-    logits_res = logits_res.detach().cpu().numpy()
-    label_0 = logits_res[:, 0].tolist()
-    label_1 = logits_res[:, 1].tolist()
-    logits_df = pd.DataFrame({"label_0": label_0, "label_1": label_1})
-    logits_df.to_csv(args.model_type + "_" + str(check_point) + "steps_" + str(round(eval_f1, 5)) + ".csv")
+    # check_point = global_step
+    # logits_res = logits_res.detach().cpu().numpy()
+    # label_0 = logits_res[:, 0].tolist()
+    # label_1 = logits_res[:, 1].tolist()
+    # logits_df = pd.DataFrame({"label_0": label_0, "label_1": label_1})
+    # logits_df.to_csv(args.model_type + "_" + str(check_point) + "steps_" + str(round(eval_f1, 5)) + ".csv")
 
     return eval_acc, eval_f1
 
@@ -115,14 +115,14 @@ def main():
     '''
     parser = argparse.ArgumentParser()
 
-    parser.add_argument("--train_file", default="./data/train_df.tsv", type=str)
+    parser.add_argument("--train_file", default="./data/data_df.tsv", type=str)
     parser.add_argument("--eval_file", default="./data/val_df.tsv", type=str)
     parser.add_argument("--test_file", default="./data/test_df.tsv", type=str)
 
-    parser.add_argument("--model_type", default="albert-chinese-tiny", type=str)
-    parser.add_argument("--model_name_or_path", default="../language_models/albert-chinese-tiny/", type=str)
+    parser.add_argument("--model_type", default="chinese-bert-wwm-ext", type=str)
+    parser.add_argument("--model_name_or_path", default="../language_models/chinese-bert-wwm-ext/", type=str)
     parser.add_argument("--do_lower_case", default=False, type=boolean_string)
-    parser.add_argument("--output_dir", default="./state_models/albert-chinese-tiny/", type=str)
+    parser.add_argument("--output_dir", default="./state_models/chinese-bert-wwm-ext/", type=str)
 
     parser.add_argument(
         "--config_name", default="", type=str, help="Pretrained config name or path if not the same as model_name")
@@ -131,24 +131,24 @@ def main():
     parser.add_argument(
         "--cache_dir", default="", type=str, help="Where do you want to store the pre-trained models downloaded from s3")
 
-    parser.add_argument("--do_train", default=False, type=boolean_string)
+    parser.add_argument("--do_train", default=True, type=boolean_string)
     parser.add_argument("--do_eval", default=False, type=boolean_string)
     parser.add_argument("--do_test", default=True, type=boolean_string)
 
-    parser.add_argument("--seed", type=int, default=2020)
+    parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--max_seq_length", default=48, type=int)
     parser.add_argument("--train_batch_size", default=32, type=int)
     parser.add_argument("--eval_batch_size", default=32, type=int)
-    parser.add_argument("--num_train_epochs", default=4, type=float)
-    parser.add_argument("--no_cuda", default=True, type=boolean_string, help="Whether not to use CUDA when available")
+    parser.add_argument("--num_train_epochs", default=5, type=float)
+    parser.add_argument("--no_cuda", default=False, type=boolean_string, help="Whether not to use CUDA when available")
 
     parser.add_argument("--save_check_point", default=5200, type=int)
-    parser.add_argument("--eval_steps", default=500, type=int)
+    parser.add_argument("--eval_steps", default=200, type=int)
     parser.add_argument("--skip_eval_rate", default=0.30, type=float)
-    parser.add_argument("--logging_steps", default=500, type=int)
+    parser.add_argument("--logging_steps", default=200, type=int)
     parser.add_argument("--warmup_steps", default=0, type=int)
     parser.add_argument("--warmup_proprotion", default=0.1, type=float)
-    parser.add_argument("--max_steps", default=-1, type=int)
+    parser.add_argument("--max_steps", default=1600, type=int)
     parser.add_argument('--gradient_accumulation_steps', type=int, default=1)
     
     parser.add_argument("--learning_rate", default=2e-5, type=float)
@@ -161,8 +161,8 @@ def main():
         device = torch.device("cpu")
         args.n_gpu = 0
     else:
-        device = torch.device("cuda")
-        args.n_gpu = torch.cuda.device_count()
+        device = torch.device("cuda:1")
+        args.n_gpu = 1
     args.device = device
     print("device: {0}, n_gpu: {1}".format(device, args.n_gpu))
 
@@ -203,7 +203,7 @@ def main():
     '''
     Data
     '''
-    processor = QAProcessor()
+    processor = QAProcessor(args)
     label_list = processor.get_labels()
     args.num_labels = len(label_list)
     args.label_list = label_list
@@ -219,11 +219,11 @@ def main():
             num_labels=args.num_labels, 
             output_hidden_states=True
             )
-        tokenizer = BertTokenizer.from_pretrained(
+        tokenizer = AutoTokenizer.from_pretrained(
             args.tokenizer_name if args.tokenizer_name else args.model_name_or_path,                                         
             do_lower_case=args.do_lower_case
             )
-        model = AlbertForSequenceClassification_MERGE.from_pretrained(
+        model = AutoModelForSequenceClassification.from_pretrained(
             args.model_name_or_path, 
             config=config
             )
@@ -336,7 +336,7 @@ def main():
         Eval at the end of the train
         '''
         if args.do_eval and global_step > args.skip_eval_rate*t_total and global_step % args.eval_steps == 0:
-            eval_acc, eval_f1 = evaluate(args, model, eval_data, global_step)
+            eval_acc, eval_f1 = evaluate(args, model, eval_data, global_step, tr_loss_avg)
             
             # save the best performs model
             if eval_f1 > best_f1:
@@ -349,6 +349,16 @@ def main():
                 # Good practice: save your training arguments together with the trained model
                 torch.save(args, os.path.join(args.output_dir, 'training_args.bin'))
 
+        """
+        Save model at the end of training
+        """
+        model_to_save = model.module if hasattr(model, 'module') else model
+        model_to_save.save_pretrained(args.output_dir)
+        tokenizer.save_pretrained(args.output_dir)
+        
+        # Good practice: save your training arguments together with the trained model
+        torch.save(args, os.path.join(args.output_dir, 'training_args.bin'))
+
     '''
     Test
     '''
@@ -359,11 +369,11 @@ def main():
             num_labels=args.num_labels , 
             output_hidden_states=True
             )
-        tokenizer = BertTokenizer.from_pretrained(
+        tokenizer = AutoTokenizer.from_pretrained(
             args.output_dir, 
             do_lower_case=args.do_lower_case
             )
-        model = AlbertForSequenceClassification_MERGE.from_pretrained(
+        model = AutoModelForSequenceClassification.from_pretrained(
             args.output_dir,
             config=config
             )
@@ -414,7 +424,7 @@ def main():
         rid = test_df["rid"].tolist()
         
         logits_df = pd.DataFrame({"qid": qid, "rid": rid, "label": pred_res})
-        logits_df.to_csv(args.model_type + "_logits_test.tsv", sep="\t", index=False)
+        logits_df.to_csv(args.model_type + "_logits_test.tsv", sep="\t", index=False, header=None)
 
 
 if __name__ == "__main__":
